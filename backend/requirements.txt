@@ -1,0 +1,7 @@
+langchain-community       # for WebBaseLoader, FAISS wrapper
+langchain-core                 # for prompts, chains                   # BeautifulSoup parsing
+faiss-cpu                   # vector index backend
+langchain
+langgraph
+chromadb
+python-dotenv
