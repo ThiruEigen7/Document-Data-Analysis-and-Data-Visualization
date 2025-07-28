@@ -5,12 +5,13 @@ import numpy as np
 import warnings
 import re
 from typing import Union
-
 import google.generativeai as genai
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from helper import clean_column_names
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 
 
 logger = logging.getLogger("data_summarizer")
@@ -127,7 +128,7 @@ def enrich_with_llm(base_summary: dict, gemini_api_key: str) -> dict:
     """
     genai.configure(api_key=gemini_api_key)
     model = genai.GenerativeModel("gemini-1.5-flash")
-    prompt = f"""{system_prompt}\nAnnotate the dictionary below. Only return a JSON object.\n{json.dumps(base_summary, default=str)}\nRespond in compact JSON, no markdown, no code block, no explanation, and keep the response to 5 lines maximum."""
+    prompt = f"""{system_prompt}\nAnnotate the dictionary below. Only return a JSON object.\n{json.dumps(base_summary, default=str)}\nRespond in compact JSON, no markdown, no code block, no explanation, and keep the response to 10 lines minimum."""
     response = model.generate_content(prompt)
     enriched_summary = base_summary
     # Remove markdown/code block if present
@@ -171,7 +172,11 @@ def summarize_json_and_sentence(data: Union[pd.DataFrame, str], gemini_api_key: 
     genai.configure(api_key=gemini_api_key)
     model = genai.GenerativeModel("gemini-1.5-flash")
     summary_prompt = f"""
-    You are a data analyst. Given the following JSON summary, write a concise, readable English summary of the dataset in 3-5 sentences. Only output the summary, no code, no markdown, no JSON.
+    You are a senior business analyst. Your goal is to help a team set actionable goals based on the dataset. Given the following JSON summary, write a detailed, insightful summary in 5 distinct lines. Each line should:
+    1. State a key fact or insight about the dataset.
+    2. Suggest a possible business goal, action, or recommendation based on that insight.
+    3. Avoid repeating information; make each line unique and relevant.
+    Only output the summary, no code, no markdown, no JSON.
     JSON:
     {json.dumps(enriched_json, default=str)}
     """
@@ -228,13 +233,4 @@ def summarize(self, data: Union[pd.DataFrame, str],
 # --- Example Test Code ---
 
 if __name__ == "__main__":
-    # Example: create a simple DataFrame to test
-    data = pd.read_csv('/home/thiru/dataviz/DataViz-/backend/data/dataset.csv',encoding = 'latin1')
-
-    gemini_api_key = ""  # Replace with your actual Gemini API key
-
-    enriched_json, summary_text = summarize_json_and_sentence(data, gemini_api_key)
-    print("LLM Enriched JSON Summary:")
-    print(json.dumps(enriched_json, indent=2, default=str), "\n")
-    print("LLM Sentence Summary:")
-    print(summary_text, "\n")
+    pass  # Output is now handled in manager.py
