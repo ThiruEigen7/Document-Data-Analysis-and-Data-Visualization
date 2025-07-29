@@ -23,7 +23,7 @@ class Manager:
         # Load data
         self.data = pd.read_csv(data_path, encoding='latin1')
 
-        # Summarize
+        
         self.summary_json, self.summary_text = summarize_json_and_sentence(self.data, self.gemini_api_key)
         print("\n==================== LLM Enriched JSON Summary ====================\n")
         print(json.dumps(self.summary_json, indent=2, default=str))
@@ -47,6 +47,6 @@ class Manager:
 if __name__ == "__main__":
     # Example usage
     gemini_api_key = ""  # Replace with your actual Gemini API key
-    data_path = '/home/thiru/dataviz/DataViz-/backend/data/dataset.csv'
+    data_path = '/home/thiru/dataviz/DataViz-/backend/data/leetcode.csv'
     manager = Manager(gemini_api_key)
     manager.run(data_path)
