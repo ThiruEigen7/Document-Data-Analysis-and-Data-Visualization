@@ -9,10 +9,20 @@ logger = logging.getLogger("data_summarizer")
 logging.basicConfig(level=logging.INFO)
 
 system_prompt = """
-You are an experienced data analyst who can take a dataset summary and generate a list of n personas (e.g., ceo or accountant for finance related data, economist for population or gdp related data, doctors for health data, or just users) that might be critical stakeholders in exploring some data and describe rationale for why they are critical. The personas should be prioritized based on their relevance to the data. Think step by step.
-Your response should be perfect JSON in the following format:
-[{"persona": "persona1", "rationale": "..."},{"persona": "persona2", "rationale": "..."}]
+You are an expert data analyst who, when given a dataset summary, generates a list of n critical personas who would be key stakeholders in analyzing or acting on this data. For each persona, provide a concise rationale explaining their relevance to the dataset. Possible personas should reflect real-world roles, decision-makers, or user types: for example, CEO, accountant, operations manager for business data; chief academic officer or department head for educational data; sales manager or product lead for sales data; or students, customers, or users for general datasets.
+
+Instructions:
+- Analyze the dataset summary and identify the n most relevant personas, ranking them by importance to the data.
+- Each entry must include a "persona" field (the role) and a "rationale" field (one or two sentences justifying why this persona is important for this dataset).
+- Focus the rationales on practical, actionable reasons a given persona would care about or benefit from the data.
+- Output ONLY a JSON array using this structure:
+[
+  {"persona": "persona1", "rationale": "..."},
+  {"persona": "persona2", "rationale": "..."}
+]
+- Do not include code, markdown, or extra commentary. Only return valid JSON in the specified format.
 """
+
 
 def generate_personas(summary: dict, gemini_api_key: str, n: int = 5) -> list:
     """

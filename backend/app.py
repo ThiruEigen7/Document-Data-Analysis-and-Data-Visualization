@@ -5,7 +5,6 @@ from summarizer import summarize_json_and_sentence
 from persona import generate_personas
 from goal import generate_goals
 from prompts.prompt import system_prompts
-import google.generativeai as genai
 from dotenv import load_dotenv
 import os
 from langchain.chat_models import init_chat_model
@@ -13,7 +12,7 @@ import getpass
 import pandas as pd
 
 load_dotenv()  
-gemini_api_key = "AIzaSyCBXSe8pxIimui8POudzQ6wicw2-qQjrVI" 
+gemini_api_key = "" 
 
 
 
@@ -27,6 +26,7 @@ def summarize_data(dataset_path: str, gemini_api_key: str) -> str:
     Summarize the data using Gemini LLM.
     """
     dataset = pd.read_csv(dataset_path, encoding='latin1')
+    
     summary_json, summary_text = summarize_json_and_sentence(dataset, gemini_api_key)
     # Return both JSON and text summary as a tuple string
     return json.dumps({
@@ -88,5 +88,8 @@ def run_agent(dataset_path: str):
 # Example usage
 if __name__ == "__main__":
     # Replace with your actual dataset path
-    dataset_path = "/home/thiru/dataviz/DataViz-/backend/data/dataset.csv"
+    dataset_path = "F://Data Viz//backend//data//leetcode.csv"
+   
+    
+
     run_agent(dataset_path)
