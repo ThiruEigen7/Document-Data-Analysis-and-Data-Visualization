@@ -29,7 +29,7 @@ def generate_personas(summary: dict, gemini_api_key: str, n: int = 5) -> list:
     Generate personas given a summary of data using Gemini LLM.
     """
     genai.configure(api_key=gemini_api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash")
     user_prompt = f"""
     The number of PERSONAs to generate is {n}. Generate {n} personas in the right format given the data summary below.
     {json.dumps(summary, default=str)}

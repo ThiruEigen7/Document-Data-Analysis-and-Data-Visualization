@@ -127,7 +127,7 @@ def enrich_with_llm(base_summary: dict, gemini_api_key: str) -> dict:
     Enrich the data summary using Gemini API.
     """
     genai.configure(api_key=gemini_api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash")
     prompt = f"""{system_prompt}\nAnnotate the dictionary below. Only return a JSON object.\n{json.dumps(base_summary, default=str)}\nRespond in compact JSON, no markdown, no code block, no explanation, and keep the response to 10 lines minimum."""
     response = model.generate_content(prompt)
     enriched_summary = base_summary
@@ -170,7 +170,7 @@ def summarize_json_and_sentence(data: Union[pd.DataFrame, str], gemini_api_key: 
 
     # Generate sentence summary using LLM and the enriched JSON
     genai.configure(api_key=gemini_api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash")
     summary_prompt = f"""
     You are a senior business analyst. Your goal is to help a team set actionable goals based on the dataset. Given the following JSON summary, write a detailed, insightful summary in 5 distinct lines. Each line should:
     1. State a key fact or insight about the dataset.

@@ -9,7 +9,7 @@ interface Column {
 
 interface DataTableProps {
   columns: Column[];
-  data: Record<string, any>[];
+  data: Record<string, string | number>[];
   maxRows?: number;
 }
 

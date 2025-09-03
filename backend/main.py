@@ -7,7 +7,8 @@ from summarizer import summarize_json_and_sentence
 from persona import generate_personas
 from goal import generate_goals
 from fastapi.middleware.cors import CORSMiddleware
-
+from v import generate_chart_json
+import json
 
 app = FastAPI(
     title="DataViz AI Manager API",
@@ -16,11 +17,9 @@ app = FastAPI(
 )
 
 
-import os
-# Enable CORS for any origin (safe for development)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For production, restrict to your frontend domain!
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,7 +35,7 @@ async def analyze_dataset(
     n_personas: int = Form(5),
     n_goals: int = Form(5)
 ):
-    """Main endpoint: Receives CSV file and returns summary, personas, and goals."""
+    temp_file_path = ""
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
             temp_file.write(await file.read())
@@ -48,8 +47,23 @@ async def analyze_dataset(
         first_persona = personas[0] if personas else {"persona": None, "rationale": ""}
         goals = generate_goals(summary_json, first_persona, gemini_api_key, n=n_goals)
         
-        os.remove(temp_file_path)  # Clean up
-        
+        for goal in goals:
+            # Expect Gemini to provide a structured JSON spec for each goal
+            if 'chart_spec' in goal and 'question' in goal:
+                try:
+                    chart_json_string = generate_chart_json(
+                        dataset_path=temp_file_path,
+                        chart_spec_json=json.dumps(goal['chart_spec']),
+                        title=goal['question']
+                    )
+                    goal['chartJson'] = json.loads(chart_json_string)
+                except Exception as e:
+                    error_message = f"Failed to generate chart: {str(e)}"
+                    print(f"Error for goal '{goal['question']}': {error_message}")
+                    goal['chartJson'] = {"error": error_message}
+            else:
+                goal['chartJson'] = {"error": "Goal dictionary is missing 'chart_spec' or 'question' key."}
+
         return {
             "summary_json": summary_json,
             "summary_text": summary_text,
@@ -59,6 +73,10 @@ async def analyze_dataset(
         }
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+
 
 @app.post("/summarize/")
 async def summarize_only(
@@ -81,8 +99,8 @@ async def summarize_only(
 @app.post("/personas/")
 async def personas_only(
     summary_json: dict,
-    gemini_api_key: str = Form(default=api_key),
-    n: int = Form(5)
+    gemini_api_key: str = api_key,
+    n: int = 5
 ):
     """Given a summary JSON, return personas."""
     try:
@@ -95,8 +113,8 @@ async def personas_only(
 async def goals_only(
     summary_json: dict,
     persona: dict,
-    gemini_api_key: str = Form(default=api_key),
-    n: int = Form(5)
+    gemini_api_key: str = api_key,
+    n: int = 5
 ):
     """Given summary JSON and persona, return goals."""
     try:

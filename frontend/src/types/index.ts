@@ -11,14 +11,19 @@ export interface ChatMessage {
   type: 'user' | 'agent';
   content: string;
   timestamp: Date;
-  chartData?: any;
+  chartData?: ChartData;
+}
+
+export interface ChartDataPoint {
+  name: string;
+  value: number;
 }
 
 export interface ChartData {
   id: string;
   title: string;
   type: 'line' | 'bar' | 'pie' | 'area';
-  data: any[];
+  data: ChartDataPoint[];
 }
 
 export interface SidebarItem {
@@ -26,4 +31,16 @@ export interface SidebarItem {
   label: string;
   icon: string;
   active?: boolean;
+}
+
+export interface Persona {
+  persona: string;
+  rationale: string;
+}
+
+export interface Goal {
+  question: string;
+  visualization: string;
+  rationale: string;
+  chartJson: Record<string, unknown>;
 }
