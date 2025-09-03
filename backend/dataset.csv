@@ -1,0 +1,9 @@
+EmployeeID,Department,ContestRating,TotalProblemsSolved,Gender
+1,Engineering,4.5,120,Male
+2,Sales,4.8,80,Female
+3,Engineering,4.1,150,Female
+4,Marketing,3.9,60,Male
+5,Sales,4.9,95,Male
+6,Engineering,4.6,180,Male
+7,Marketing,4.2,75,Female
+8,Sales,4.7,110,Female

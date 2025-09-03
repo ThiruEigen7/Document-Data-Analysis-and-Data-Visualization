@@ -9,7 +9,7 @@ interface WorkspaceProps {
   datasets: Dataset[];
   uploadingFiles: string[];
   charts: ChartData[];
-  sampleData: Record<string, any>[];
+  sampleData: Record<string, string | number>[];
   onUpload: (files: File[]) => void;
   onRemoveDataset: (id: string) => void;
   onPreviewDataset: (dataset: Dataset) => void;
