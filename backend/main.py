@@ -72,21 +72,33 @@ async def analyze_dataset(
                 "preprocess_error": error,
             }
             if not error:
-                # Generate chart (matplotlib and plotly, return as base64 or JSON)
-                fig, chart_error = chart_gen.generate_chart(processed_df, chart_spec, library="matplotlib")
-                chart_info["chart_error"] = chart_error
-                if not chart_error and fig is not None:
+                # Sanitize processed_df for NaN/inf before chart generation
+                processed_df = processed_df.replace([float('nan'), float('inf'), float('-inf')], None)
+                # Generate chart using new ChartGenerator logic (try Plotly, then Matplotlib)
+                chart_results_dict = chart_gen.generate_chart(processed_df, chart_spec)
+                # Handle Plotly result
+                if chart_results_dict.get("plotly") is not None and chart_results_dict.get("plotly_error") is None:
+                    # Safe JSON encoding: replace NaN/Infinity with null
+                    plotly_json_str = plotly.utils.PlotlyJSONEncoder().encode(chart_results_dict["plotly"])
+                    plotly_json_str = plotly_json_str.replace("NaN", "null").replace("Infinity", "null").replace("-Infinity", "null")
+                    chart_json = json.loads(plotly_json_str)
+                    chart_info["chart_data_plotly"] = chart_json
+                    chart_info["chart_error_plotly"] = None
+                else:
+                    chart_info["chart_data_plotly"] = None
+                    chart_info["chart_error_plotly"] = chart_results_dict.get("plotly_error")
+                # Handle Matplotlib result
+                if chart_results_dict.get("matplotlib") is not None and chart_results_dict.get("matplotlib_error") is None:
                     img_buffer = io.BytesIO()
-                    fig.savefig(img_buffer, format='png', bbox_inches='tight', dpi=150)
+                    chart_results_dict["matplotlib"].savefig(img_buffer, format='png', bbox_inches='tight', dpi=150)
                     img_buffer.seek(0)
                     img_base64 = base64.b64encode(img_buffer.getvalue()).decode()
                     chart_info["chart_data_matplotlib"] = f"data:image/png;base64,{img_base64}"
-                    plt.close(fig)
-                # Optionally, also support plotly
-                fig_plotly, chart_error_plotly = chart_gen.generate_chart(processed_df, chart_spec, library="plotly")
-                if not chart_error_plotly and fig_plotly is not None:
-                    chart_json = json.loads(plotly.utils.PlotlyJSONEncoder().encode(fig_plotly))
-                    chart_info["chart_data_plotly"] = chart_json
+                    plt.close(chart_results_dict["matplotlib"])
+                    chart_info["chart_error_matplotlib"] = None
+                else:
+                    chart_info["chart_data_matplotlib"] = None
+                    chart_info["chart_error_matplotlib"] = chart_results_dict.get("matplotlib_error")
             chart_results.append(chart_info)
         # --- END PIPELINE ---
         return {
