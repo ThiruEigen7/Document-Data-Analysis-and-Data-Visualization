@@ -13,7 +13,6 @@ from helper import clean_column_names
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 
-
 logger = logging.getLogger("data_summarizer")
 logging.basicConfig(level=logging.INFO)
 
@@ -229,6 +228,12 @@ def summarize(self, data: Union[pd.DataFrame, str],
             # default summary includes column metadata without enrichment
             return base_summary
 
+
+def get_column_names(df: pd.DataFrame) -> list:
+    """
+    Return a list of column names from the DataFrame.
+    """
+    return df.columns.tolist()
 
 # --- Example Test Code ---
 

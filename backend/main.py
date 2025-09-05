@@ -7,8 +7,11 @@ from summarizer import summarize_json_and_sentence
 from persona import generate_personas
 from goal import generate_goals
 from fastapi.middleware.cors import CORSMiddleware
-from v import generate_chart_json
 import json
+import io
+import base64
+import matplotlib.pyplot as plt
+import plotly.utils
 
 app = FastAPI(
     title="DataViz AI Manager API",
@@ -46,30 +49,53 @@ async def analyze_dataset(
         personas = generate_personas(summary_json, gemini_api_key, n=n_personas)
         first_persona = personas[0] if personas else {"persona": None, "rationale": ""}
         goals = generate_goals(summary_json, first_persona, gemini_api_key, n=n_goals)
-        
-        for goal in goals:
-            # Expect Gemini to provide a structured JSON spec for each goal
-            if 'chart_spec' in goal and 'question' in goal:
-                try:
-                    chart_json_string = generate_chart_json(
-                        dataset_path=temp_file_path,
-                        chart_spec_json=json.dumps(goal['chart_spec']),
-                        title=goal['question']
-                    )
-                    goal['chartJson'] = json.loads(chart_json_string)
-                except Exception as e:
-                    error_message = f"Failed to generate chart: {str(e)}"
-                    print(f"Error for goal '{goal['question']}': {error_message}")
-                    goal['chartJson'] = {"error": error_message}
-            else:
-                goal['chartJson'] = {"error": "Goal dictionary is missing 'chart_spec' or 'question' key."}
 
+        # --- CHART SPEC, PREPROCESS, CHART GENERATION PIPELINE ---
+        from chart_spec import GeminiChartSpecClient
+        from preprocess import ChartDataPreprocessor
+        from chart_generator import ChartGenerator
+        chart_spec_client = GeminiChartSpecClient(gemini_api_key)
+        chart_gen = ChartGenerator()
+        from summarizer import get_column_names
+        columns = get_column_names(df)
+        chart_results = []
+        for goal in goals:
+            # Generate chart spec for this goal (now using columns, not summary_json)
+            chart_spec = chart_spec_client.generate_chart_spec(columns, goal["question"])
+            chart_spec = chart_spec_client.validate_chart_spec(chart_spec, columns)
+            # Preprocess data
+            preprocessor = ChartDataPreprocessor(df)
+            processed_df, error = preprocessor.process_for_chart(chart_spec)
+            chart_info = {
+                "goal": goal,
+                "chart_spec": chart_spec,
+                "preprocess_error": error,
+            }
+            if not error:
+                # Generate chart (matplotlib and plotly, return as base64 or JSON)
+                fig, chart_error = chart_gen.generate_chart(processed_df, chart_spec, library="matplotlib")
+                chart_info["chart_error"] = chart_error
+                if not chart_error and fig is not None:
+                    img_buffer = io.BytesIO()
+                    fig.savefig(img_buffer, format='png', bbox_inches='tight', dpi=150)
+                    img_buffer.seek(0)
+                    img_base64 = base64.b64encode(img_buffer.getvalue()).decode()
+                    chart_info["chart_data_matplotlib"] = f"data:image/png;base64,{img_base64}"
+                    plt.close(fig)
+                # Optionally, also support plotly
+                fig_plotly, chart_error_plotly = chart_gen.generate_chart(processed_df, chart_spec, library="plotly")
+                if not chart_error_plotly and fig_plotly is not None:
+                    chart_json = json.loads(plotly.utils.PlotlyJSONEncoder().encode(fig_plotly))
+                    chart_info["chart_data_plotly"] = chart_json
+            chart_results.append(chart_info)
+        # --- END PIPELINE ---
         return {
             "summary_json": summary_json,
             "summary_text": summary_text,
             "personas": personas,
             "selected_persona": first_persona,
             "goals": goals,
+            "charts": chart_results,
         }
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})

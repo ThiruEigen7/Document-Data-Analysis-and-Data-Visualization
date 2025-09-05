@@ -3,11 +3,26 @@ import Sidebar from './components/Sidebar';
 import Workspace from './components/Workspace';
 import ChatPane from './components/ChatPane';
 import StyleGuide from './components/StyleGuide';
-import { Dataset, ChatMessage } from './types'; // Assuming types.ts is in the same directory
-import ChartJSComponent from './components/ChartJSComponent';
+import { Dataset, ChatMessage, ChartData } from './types'; // Assuming types.ts is in the same directory
+import UnifiedChartDisplay from './components/UnifiedChartDisplay';
 
 // Define the structure for the analysis result for type safety
+interface ChartInfo {
+  goal: {
+    question: string;
+    visualization: string;
+    rationale: string;
+  };
+  chart_spec: any;
+  preprocess_error?: string;
+  chart_error?: string;
+  chart_data_matplotlib?: string;
+  chart_data_plotly?: any;
+  processed_df?: any[];
+}
+
 interface AnalysisResult {
+  summary_json: any;
   summary_text: string;
   personas: Array<{ persona: string; rationale: string }>;
   selected_persona: { persona: string; rationale: string };
@@ -15,8 +30,8 @@ interface AnalysisResult {
     question: string;  
     visualization: string; 
     rationale: string; 
-    chartJson: any; // This will hold the JSON from Plotly
   }>;
+  charts: ChartInfo[];
 }
 
 function App() {
@@ -126,6 +141,21 @@ function App() {
     }, 1500);
   };
 
+  // CSV download handler
+  const handleDownloadCSV = (data: any[], filename: string = 'processed_data.csv') => {
+    if (!data || !data.length) return;
+    const keys = Object.keys(data[0]);
+    const csvRows = [keys.join(','), ...data.map(row => keys.map(k => JSON.stringify(row[k] ?? '')).join(','))];
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
   if (showStyleGuide) {
     return (
       <div className="min-h-screen bg-[#121212] p-4">
@@ -139,6 +169,20 @@ function App() {
       </div>
     );
   }
+
+  // Helper: Map ChartInfo[] to ChartData[] for Workspace
+  const mapChartsToChartData = (charts: ChartInfo[]): ChartData[] =>
+    charts.map((c, idx) => ({
+      id: String(idx),
+      title: c.goal?.question || `Chart ${idx + 1}`,
+      type: c.chart_spec?.type || 'bar',
+      data: Array.isArray(c.processed_df)
+        ? c.processed_df.map((row: any) => ({
+            name: row.name ?? row.label ?? row.x ?? '',
+            value: row.value ?? row.y ?? row.count ?? 0,
+          }))
+        : [],
+    }));
 
   return (
     <div className="h-screen bg-[#121212] flex overflow-hidden">
@@ -174,6 +218,8 @@ function App() {
               onUpload={handleUpload}
               onRemoveDataset={handleRemoveDataset}
               onPreviewDataset={handlePreviewDataset}
+              charts={mapChartsToChartData(analysisResult?.charts ?? [])}
+              sampleData={[]}
             />
 
             {/* Analysis Results Display */}
@@ -209,22 +255,42 @@ function App() {
                     Goals for {analysisResult.selected_persona?.persona}
                   </h2>
                   <div className="space-y-6">
-                    {analysisResult.goals?.map((g, i) => (
-                      <div key={i} className="p-5 bg-[#191C22] rounded-xl">
-                        <div className="mb-3">
-                          <p className="font-semibold text-lg text-white mb-1">{g.question}</p>
-                          <p className="text-sm text-gray-400">
-                            <span className="font-medium text-[#F39C12]">Suggested Viz: </span>
-                            {g.visualization}
-                          </p>
+                    {analysisResult.goals?.map((g, i) => {
+                      // Find corresponding chart info for this goal
+                      const chartInfo = analysisResult.charts?.find(
+                        c => c.goal?.question === g.question
+                      );
+                      // Compose result object for UnifiedChartDisplay
+                      const result = chartInfo
+                        ? {
+                            success: !chartInfo.preprocess_error && !chartInfo.chart_error,
+                            error: chartInfo.preprocess_error || chartInfo.chart_error || undefined,
+                            chart_data:
+                              chartInfo.chart_data_matplotlib || chartInfo.chart_data_plotly || null,
+                            data_points: chartInfo.processed_df?.length || 0,
+                            summary: g.rationale,
+                            processed_data: chartInfo.processed_df || [],
+                          }
+                        : { success: false, error: 'No chart data found', chart_data: null };
+                      return (
+                        <div key={i} className="p-5 bg-[#191C22] rounded-xl">
+                          <div className="mb-3">
+                            <p className="font-semibold text-lg text-white mb-1">{g.question}</p>
+                            <p className="text-sm text-gray-400">
+                              <span className="font-medium text-[#F39C12]">Suggested Viz: </span>
+                              {g.visualization}
+                            </p>
+                          </div>
+                          {/* CHART RENDERING AREA */}
+                          <div className="mt-4 bg-transparent rounded-lg">
+                            <UnifiedChartDisplay
+                              result={result}
+                              onDownload={() => handleDownloadCSV(result.processed_data ?? [])}
+                            />
+                          </div>
                         </div>
-                        {/* CHART RENDERING AREA */}
-                        <div className="mt-4 bg-transparent rounded-lg h-96">
-                        {/* USE: The new, correct Chart.js component */}
-                        <ChartJSComponent chartJson={g.chartJson} />
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               </div>
