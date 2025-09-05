@@ -33,10 +33,12 @@ class ChartGenerator:
                 result["plotly"] = fig_plotly
                 result["plotly_error"] = None
             else:
+                logger.error(f"Plotly failed for chart_type={chart_type}, x={x_col}, y={y_col}. Data head: {data.head().to_dict()}")
+                logger.error(f"Plotly error: {error_plotly}")
                 result["plotly"] = None
                 result["plotly_error"] = error_plotly
         except Exception as e:
-            logger.error(f"Plotly chart generation failed: {str(e)}")
+            logger.error(f"Plotly chart generation failed: {str(e)}. Data head: {data.head().to_dict()}")
             result["plotly"] = None
             result["plotly_error"] = str(e)
         # If Plotly failed, try Matplotlib
