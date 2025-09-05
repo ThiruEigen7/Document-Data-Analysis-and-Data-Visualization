@@ -74,11 +74,10 @@ async def analyze_dataset(
             if not error:
                 # Sanitize processed_df for NaN/inf before chart generation
                 processed_df = processed_df.replace([float('nan'), float('inf'), float('-inf')], None)
-                # Generate chart using new ChartGenerator logic (try Plotly, then Matplotlib)
+                # Always try Plotly first, then Matplotlib if Plotly fails
                 chart_results_dict = chart_gen.generate_chart(processed_df, chart_spec)
                 # Handle Plotly result
                 if chart_results_dict.get("plotly") is not None and chart_results_dict.get("plotly_error") is None:
-                    # Safe JSON encoding: replace NaN/Infinity with null
                     plotly_json_str = plotly.utils.PlotlyJSONEncoder().encode(chart_results_dict["plotly"])
                     plotly_json_str = plotly_json_str.replace("NaN", "null").replace("Infinity", "null").replace("-Infinity", "null")
                     chart_json = json.loads(plotly_json_str)
@@ -87,8 +86,10 @@ async def analyze_dataset(
                 else:
                     chart_info["chart_data_plotly"] = None
                     chart_info["chart_error_plotly"] = chart_results_dict.get("plotly_error")
-                # Handle Matplotlib result
-                if chart_results_dict.get("matplotlib") is not None and chart_results_dict.get("matplotlib_error") is None:
+                    # Log Plotly error for debugging
+                    print(f"Plotly error: {chart_results_dict.get('plotly_error')}")
+                # Handle Matplotlib result (only if Plotly failed)
+                if chart_info["chart_data_plotly"] is None and chart_results_dict.get("matplotlib") is not None and chart_results_dict.get("matplotlib_error") is None:
                     img_buffer = io.BytesIO()
                     chart_results_dict["matplotlib"].savefig(img_buffer, format='png', bbox_inches='tight', dpi=150)
                     img_buffer.seek(0)
@@ -99,6 +100,9 @@ async def analyze_dataset(
                 else:
                     chart_info["chart_data_matplotlib"] = None
                     chart_info["chart_error_matplotlib"] = chart_results_dict.get("matplotlib_error")
+                    # Log Matplotlib error for debugging
+                    if chart_info["chart_data_matplotlib"] is None:
+                        print(f"Matplotlib error: {chart_results_dict.get('matplotlib_error')}")
             chart_results.append(chart_info)
         # --- END PIPELINE ---
         return {

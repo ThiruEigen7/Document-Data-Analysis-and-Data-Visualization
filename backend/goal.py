@@ -18,7 +18,7 @@ You are an experienced data analyst tasked with generating a list of simple, adm
 - Generate only simple or intermediate single-line goals using only 2 columns at a time, phrased as direct instructions or questions. Example: "Which department has the highest average rating?", "List top 10 students by rating", "How does contest participation vary by year?", etc.
 - Use a variety of natural, concise question or instruction forms (e.g., 'Which...', 'How many...', 'List top 10...', 'Compare...', 'Find...', etc.).
 - Avoid complex multi-level breakdowns, nested groupings, or verbose explanations.
-- For each goal, suggest the most suitable chart type for visualization (e.g., bar, line, pie, scatter, box, histogram, etc.) based on the nature of the question and data. Do NOT always use bar charts; vary chart types appropriately.
+- For each goal, suggest the most suitable chart type for visualization (e.g., bar, line, pie, scatter, box, histogram, violin etc.) based on the nature of the question and data. Do NOT always use bar charts; vary chart types appropriately.
 - The output for each goal must include:
     - index: a unique integer for the goal
     - question: a single, direct line (see above for examples)
