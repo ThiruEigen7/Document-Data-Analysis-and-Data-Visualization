@@ -17,20 +17,42 @@ class ChartGenerator:
         self.figure_size = figure_size
         self.dpi = dpi
 
-    def generate_chart(self, data: pd.DataFrame, chart_specs: Dict[str, Any], library: str = "matplotlib", save_path: Optional[str] = None) -> Tuple[Optional[Any], Optional[str]]:
+    def generate_chart(self, data: pd.DataFrame, chart_specs: Dict[str, Any], save_path: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Try to generate chart with Plotly first (for interactivity). If Plotly fails, fall back to Matplotlib.
+        Returns a dict with both results and errors for the caller to choose.
+        """
+        chart_type = chart_specs.get("chart")
+        x_col = chart_specs.get("x")
+        y_col = chart_specs.get("y")
+        result = {}
+        # Try Plotly first
         try:
-            chart_type = chart_specs.get("chart")
-            x_col = chart_specs.get("x")
-            y_col = chart_specs.get("y")
-            if library == "matplotlib":
-                return self._generate_matplotlib_chart(data, chart_type, x_col, y_col, save_path)
-            elif library == "plotly":
-                return self._generate_plotly_chart(data, chart_type, x_col, y_col, save_path)
+            fig_plotly, error_plotly = self._generate_plotly_chart(data, chart_type, x_col, y_col, save_path)
+            if fig_plotly is not None and error_plotly is None:
+                result["plotly"] = fig_plotly
+                result["plotly_error"] = None
             else:
-                return None, f"Unsupported chart library: {library}"
+                result["plotly"] = None
+                result["plotly_error"] = error_plotly
         except Exception as e:
-            logger.error(f"Chart generation failed: {str(e)}")
-            return None, f"Chart generation error: {str(e)}"
+            logger.error(f"Plotly chart generation failed: {str(e)}")
+            result["plotly"] = None
+            result["plotly_error"] = str(e)
+        # If Plotly failed, try Matplotlib
+        try:
+            fig_matplotlib, error_matplotlib = self._generate_matplotlib_chart(data, chart_type, x_col, y_col, save_path)
+            if fig_matplotlib is not None and error_matplotlib is None:
+                result["matplotlib"] = fig_matplotlib
+                result["matplotlib_error"] = None
+            else:
+                result["matplotlib"] = None
+                result["matplotlib_error"] = error_matplotlib
+        except Exception as e:
+            logger.error(f"Matplotlib chart generation failed: {str(e)}")
+            result["matplotlib"] = None
+            result["matplotlib_error"] = str(e)
+        return result
 
     def _generate_matplotlib_chart(self, data: pd.DataFrame, chart_type: str, x_col: str, y_col: Optional[str], save_path: Optional[str] = None) -> Tuple[Optional[plt.Figure], Optional[str]]:
         try:

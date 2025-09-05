@@ -52,6 +52,16 @@ class ChartDataPreprocessor:
             else:
                 logger.warning(f"Sort column '{sort_by_col}' not found in processed dataframe")
 
+        # Apply limit if specified
+        limit = chart_spec.get("limit")
+        if limit is not None:
+            try:
+                limit = int(limit)
+                processed_df = processed_df.head(limit)
+                logger.info(f"Applied row limit: {limit}")
+            except Exception as e:
+                logger.warning(f"Invalid limit value: {chart_spec.get('limit')}")
+
         return processed_df, None
 
     def _apply_aggregation(self, df: pd.DataFrame, x_col: str, y_col: str, agg_method: str) -> pd.DataFrame:

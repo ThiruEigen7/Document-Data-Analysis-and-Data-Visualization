@@ -24,6 +24,12 @@ class GeminiChartSpecClient:
 
     def generate_chart_spec(self, columns: list, goal_question: str) -> Dict[str, Any]:
         columns_str = ", ".join(columns)
+        # Detect 'top N', 'first N', 'limit N' in goal_question
+        import re
+        limit_match = re.search(r'(top|first|limit)\s*(\d+)', goal_question, re.IGNORECASE)
+        limit_value = None
+        if limit_match:
+            limit_value = int(limit_match.group(2))
         prompt = f"""
 You are a data visualization expert. Given the following dataset columns:
 {columns_str}
@@ -37,6 +43,7 @@ Your task:
 - If the goal requires aggregation (e.g., average, sum), include that in the output.
 - If the goal mentions sorting (e.g., 'sorted by', 'order by'), include the sort column and direction.
 - If the goal asks for specific columns only (e.g., 'show brand only'), specify which columns to display.
+- If the goal asks for top N, first N, or limit N, include a 'limit' field in the output.
 - Always respond in valid JSON format, with no additional text, following this structure:
 {{
   "chart": "bar",
@@ -45,12 +52,14 @@ Your task:
   "agg": "mean",
   "sort_by": "engine_size",
   "sort_order": "desc",
-  "columns_only": ["brand"]
+  "columns_only": ["brand"],
+  "limit": 10
 }}
 
 Important data type rules:
 - "chart", "x", "y", "agg", "sort_by", "sort_order" must be strings (not arrays)
 - "columns_only" must be an array of strings
+- "limit" must be an integer if present
 - Use null for optional fields, not empty strings
 - Only use column names that exist in the dataset: {columns_str}
 - "agg" can be: mean, sum, count, median, or null if not needed.
@@ -70,6 +79,8 @@ Respond with JSON only."""
         raw_text = raw_text.strip('`').strip()
         try:
             chart_spec = json.loads(raw_text)
+            if limit_value is not None:
+                chart_spec['limit'] = limit_value
         except Exception:
             logger.error(f"Gemini did not return valid JSON: {raw_text}")
             raise ValueError(f"Gemini did not return valid JSON: {raw_text}")
