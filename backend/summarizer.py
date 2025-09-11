@@ -91,9 +91,12 @@ def get_column_properties(df: pd.DataFrame, n_samples: int = 3) -> list:
         else:
             # Could be string or object
             try:
-                pd.to_datetime(df[column], errors='raise')
+                # Try parsing as date, but do not crash if parsing fails
+                pd.to_datetime(df[column], errors='coerce')  # Use 'coerce' to avoid exceptions
+                # Optionally, specify format: pd.to_datetime(df[column], format='%Y-%m-%d', errors='coerce')
                 properties["dtype"] = "date"
-            except:
+            except Exception as e:
+                logger.warning(f"Date parsing failed for column '{column}': {e}")
                 if df[column].nunique() / len(df[column]) < 0.5:
                     properties["dtype"] = "category"
                 else:
@@ -190,7 +193,7 @@ def summarize(self, data: Union[pd.DataFrame, str],
                   n_samples: int = 3,
                   encoding: str = 'utf-8',
                   gemini_api_key: str = None) -> dict:
-        # If string, assume file path
+        # If string, assume file location
         if isinstance(data, str):
             df = read_dataframe(data, encoding=encoding)
             file_name = data.split("/")[-1]
