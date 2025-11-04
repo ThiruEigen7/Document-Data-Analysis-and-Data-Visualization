@@ -73,7 +73,7 @@ export default function Sidebar({ activeSection, onSectionChange, documents }: S
 
   return (
     <aside className="w-64 border-r border-gray-800 bg-[#1E1E1E] flex flex-col">
-      <div className="p-4 border-b border-gray-800">
+      <div className="p-6 border-b border-gray-800">
         <h2 className="text-lg font-semibold text-white mb-4">Navigation</h2>
         <nav className="space-y-2">
           {sidebarItems.map((item) => {

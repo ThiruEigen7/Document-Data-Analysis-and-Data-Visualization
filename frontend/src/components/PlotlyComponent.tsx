@@ -1,5 +1,3 @@
-// src/components/chartjscom.tsx
-
 import React from 'react';
 import { Bar, Pie, Scatter, Line, Chart } from 'react-chartjs-2';
 import {
