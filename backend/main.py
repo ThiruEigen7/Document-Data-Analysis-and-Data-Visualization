@@ -29,7 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-api_key = ""
+api_key = "AIzaSyCS0wuvPw4jHoheqHHuWdstsVAsSbxoMTg"
 
 # In-memory storage for uploaded files (in production, use proper database/file storage)
 uploaded_files_storage = {}
