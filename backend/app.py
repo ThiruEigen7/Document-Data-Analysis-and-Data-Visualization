@@ -19,7 +19,7 @@ from pathlib import Path
 import io
 
 load_dotenv()  
-gemini_api_key = "AIzaSyDxQnW-zESLjjV0gQzkaMqXKci0u_E-_JA" 
+gemini_api_key = "" 
 
 
 

@@ -122,6 +122,7 @@ export default function Sidebar({ activeSection, onSectionChange, documents, onR
             })
           )}
         </div>
+        {/* added chart type */}
       </div>
         <div className="mt-4 flex flex-wrap gap-2 text-xs text-gray-300 justify-center">
     {["bar","pie","scatter","histogram","line","box","violin","area","heatmap","funnel","treemap","density"].map(type => (
