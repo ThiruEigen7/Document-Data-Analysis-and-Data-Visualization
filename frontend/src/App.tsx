@@ -45,7 +45,7 @@ interface ChartInfo {
 }
 
 interface AnalysisResult {
-  file_id?: string; // New field from backend
+  file_id?: string;
   summary_json: any;
   summary_text: string;
   personas: Array<{ persona: string; rationale: string }>;
@@ -57,7 +57,7 @@ interface AnalysisResult {
     suggested_chart?: string;
   }>;
   charts: ChartInfo[];
-  approach: string; // New field from backend
+  approach: string;
 }
 
 function App() {
@@ -72,14 +72,18 @@ function App() {
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [currentFileId, setCurrentFileId] = useState<string | null>(null); // Track current file ID
+  const [currentFileId, setCurrentFileId] = useState<string | null>(null);
 
   // Updated document processing function
   const handleUpload = async (files: File[] = [], query?: string) => {
+    console.log('handleUpload called:', { files, query, currentFileId, uploadedFile });
+    
     // Determine which approach to use
     const hasNewFile = files.length > 0;
     const hasExistingFile = currentFileId && !hasNewFile;
     const hasQuery = query && query.trim();
+
+    console.log('Upload conditions:', { hasNewFile, hasExistingFile, hasQuery });
 
     // Validation
     if (!hasNewFile && !hasExistingFile) {
@@ -108,18 +112,18 @@ function App() {
 
       if (hasNewFile) {
         // Approach 1: Upload new file (with or without queries)
-        endpoint = 'http://127.0.0.1:8000/analyze/';
+        endpoint = 'http://127.0.0.1:8000/two_agent/';
         formData.append('file', file!);
         if (hasQuery) {
-          formData.append('queries', query!);
+          formData.append('instruction', query!);
         }
         setUploadedFile(file!);
         setUploadingFiles((prev) => [...prev, file!.name]);
       } else if (hasExistingFile && hasQuery) {
         // Approach 2: Analyze existing file with new queries
-        endpoint = 'http://127.0.0.1:8000/analyze_existing/';
+        endpoint = 'http://127.0.0.1:8000/two_agent_query/';
         formData.append('file_id', currentFileId!);
-        formData.append('queries', query!);
+        formData.append('instruction', query!);
       } else {
         throw new Error('Invalid request configuration');
       }

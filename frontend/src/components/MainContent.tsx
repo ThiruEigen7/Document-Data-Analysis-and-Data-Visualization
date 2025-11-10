@@ -42,7 +42,7 @@ interface MainContentProps {
   showWelcome: boolean;
   showUpload?: boolean;
   onUpload?: (files: File[], query?: string) => void;
-  hasUploadedFile?: boolean; // New prop to track if file is uploaded
+  hasUploadedFile?: boolean;
 }
 
 export default function MainContent({ 
@@ -59,48 +59,66 @@ export default function MainContent({
     type: 'user' | 'file' | 'response', 
     content: string, 
     fileName?: string,
-    approach?: string 
+    approach?: string,
+    tempId?: string
   }>>([]);
   
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Debug: Log when hasUploadedFile changes
+  React.useEffect(() => {
+    console.log('MainContent hasUploadedFile changed to:', hasUploadedFile);
+  }, [hasUploadedFile]);
 
   // Submit both file and query together
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     const hasNewFile = !!uploadFile;
-    const hasQuery = message.trim();
+    const hasQuery = message.trim().length > 0;
+    
+    // FIXED: Allow submission if either:
+    // 1. New file is attached (with or without query)
+    // 2. Already uploaded file exists AND user typed a query
     const canSubmit = hasNewFile || (hasUploadedFile && hasQuery);
 
-    if (canSubmit && onUpload) {
-      // Determine approach for UI feedback
-      let approach = '';
+    console.log('Submit Debug:', { hasNewFile, hasQuery, hasUploadedFile, canSubmit });
+
+    if (!canSubmit) {
+      console.log('Cannot submit - conditions not met');
+      return;
+    }
+
+    if (onUpload) {
+      const tempId = Date.now().toString();
+      
+      let preliminaryApproach = '';
       if (hasNewFile && hasQuery) {
-        approach = 'upload_with_queries';
+        preliminaryApproach = 'upload_with_queries';
       } else if (hasNewFile) {
-        approach = 'upload_only';
+        preliminaryApproach = 'upload_only';
       } else if (hasUploadedFile && hasQuery) {
-        approach = 'existing_file_with_queries';
+        preliminaryApproach = 'existing_file_with_queries';
       }
 
-      // Show file and query as a single bubble
+      console.log('Submitting with approach:', preliminaryApproach);
+
       setChatMessages((prev) => [
         ...prev,
         {
           type: 'user',
           content: hasQuery ? message : '',
           fileName: uploadFile ? uploadFile.name : undefined,
-          approach
+          approach: preliminaryApproach,
+          tempId
         }
       ]);
 
       onUpload(uploadFile ? [uploadFile] : [], hasQuery ? message : undefined);
       
-      // Reset form
       setUploadFile(null);
       setMessage("");
       
-      // Clear file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -120,14 +138,31 @@ export default function MainContent({
     }
   };
 
-  // Add analysis result as a chat bubble when available
+  const lastProcessedResultRef = React.useRef<string | null>(null);
+
   React.useEffect(() => {
-    if (analysisResult) {
+    if (analysisResult && analysisResult.file_id !== lastProcessedResultRef.current) {
+      lastProcessedResultRef.current = analysisResult.file_id || null;
+
       const approachMessages = {
-        'upload_only': 'File uploaded and analyzed successfully!',
-        'upload_with_queries': 'File uploaded and analyzed with your queries!',
-        'existing_file_with_queries': 'Analysis completed for your queries!'
+        'agent_upload_no_instruction': 'File uploaded and analyzed successfully!',
+        'agent_upload_with_instruction': 'File uploaded and analyzed with your queries!',
+        'agent_query_with_instruction': 'Analysis completed for your queries!'
       };
+
+      setChatMessages((prev) => {
+        const updated = [...prev];
+        const lastUserMsgIndex = updated.findLastIndex(msg => msg.type === 'user');
+        
+        if (lastUserMsgIndex !== -1 && analysisResult.approach) {
+          updated[lastUserMsgIndex] = {
+            ...updated[lastUserMsgIndex],
+            approach: analysisResult.approach
+          };
+        }
+        
+        return updated;
+      });
 
       setChatMessages((prev) => [
         ...prev,
@@ -140,7 +175,6 @@ export default function MainContent({
     }
   }, [analysisResult]);
 
-  // Scroll to bottom when chatMessages change
   const chatEndRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     if (chatEndRef.current) {
@@ -148,10 +182,10 @@ export default function MainContent({
     }
   }, [chatMessages]);
 
-  // Determine submit button state and placeholder text
-  const canSubmitFile = !!uploadFile;
-  const canSubmitQuery = hasUploadedFile && message.trim();
-  const canSubmit = canSubmitFile || canSubmitQuery;
+  // FIXED: Proper submit button state
+  const hasNewFile = !!uploadFile;
+  const hasQuery = message.trim().length > 0;
+  const canSubmit = hasNewFile || (hasUploadedFile && hasQuery);
 
   const placeholderText = hasUploadedFile && !uploadFile 
     ? "Ask a new question about your uploaded data..."
@@ -160,8 +194,11 @@ export default function MainContent({
   const getApproachBadge = (approach?: string) => {
     const badges = {
       'upload_only': { text: 'File Analysis', color: 'bg-blue-500' },
+      'agent_upload_no_instruction': { text: 'File Analysis', color: 'bg-blue-500' },
       'upload_with_queries': { text: 'File + Queries', color: 'bg-purple-500' },
-      'existing_file_with_queries': { text: 'New Query', color: 'bg-green-500' }
+      'agent_upload_with_instruction': { text: 'File + Queries', color: 'bg-purple-500' },
+      'existing_file_with_queries': { text: 'New Query', color: 'bg-green-500' },
+      'agent_query_with_instruction': { text: 'New Query', color: 'bg-green-500' }
     };
     
     const badge = badges[approach as keyof typeof badges];
@@ -174,17 +211,34 @@ export default function MainContent({
     );
   };
 
+  // FIXED: Better button title based on actual state
+  const getButtonTitle = () => {
+    if (hasNewFile && hasQuery) {
+      return "Upload file and analyze with query";
+    } else if (hasNewFile) {
+      return "Upload and analyze file";
+    } else if (hasUploadedFile && hasQuery) {
+      return "Analyze with new query";
+    } else if (hasUploadedFile) {
+      return "Enter a query to analyze";
+    } else {
+      return "Upload a file first";
+    }
+  };
+
   return (
     <main className="flex-1 flex flex-col items-center justify-center p-8 bg-[#121212] w-full min-h-screen">
       <div className="w-full max-w-5xl flex flex-col justify-center items-center min-h-[80vh] bg-[#121212]">
         <h1 className="text-5xl font-extrabold text-white mb-4 tracking-tight drop-shadow-lg">Ask Vizoraa</h1>
         <p className="text-xl text-gray-400 mb-10">Data Analysis and Data Viz Agent</p>
         
-        {/* Status indicator */}
+        {/* Status indicator - ENHANCED */}
         {hasUploadedFile && (
-          <div className="mb-4 flex items-center gap-2 text-sm text-green-400">
-            <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-            File ready for analysis - you can ask new questions
+          <div className="mb-4 flex items-center gap-3 px-4 py-2 bg-green-900/20 border border-green-500/30 rounded-lg">
+            <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+            <span className="text-sm text-green-300 font-medium">
+              File ready for analysis - you can ask new questions without uploading again!
+            </span>
           </div>
         )}
 
@@ -198,7 +252,6 @@ export default function MainContent({
                   : 'bg-[#191C22] text-gray-100 font-medium'}
                 ${msg.type === 'user' ? 'hover:scale-105' : ''}
               `}> 
-                {/* Approach badge */}
                 {msg.approach && (
                   <div className="mb-2">
                     {getApproachBadge(msg.approach)}
@@ -219,19 +272,17 @@ export default function MainContent({
           <div ref={chatEndRef} />
         </div>
 
-        {/* Analysis results as chat bubble (charts/personas/goals) */}
+        {/* Analysis results as chat bubble */}
         {analysisResult && (
           <div className="w-full flex flex-col gap-8 mb-10">
             <div className="flex justify-start">
               <div className="px-6 py-5 rounded-2xl max-w-full bg-[#191C22] text-gray-100 shadow-lg w-full">
-                {/* Show approach info */}
                 <div className="mb-4 flex items-center gap-2">
                   <span className="text-sm text-gray-400">Analysis Type:</span>
                   {getApproachBadge(analysisResult.approach)}
                 </div>
 
-                {/* Show summary and personas for full analysis */}
-                {(analysisResult.approach === 'upload_only') && (
+                {(analysisResult.approach === 'agent_upload_no_instruction' || analysisResult.approach === 'upload_only') && (
                   <>
                     <div className="mb-4 font-bold text-[#1ABC9C] text-2xl">Dataset Summary:</div>
                     <div className="mb-6 text-white text-lg bg-[#232323] rounded-xl p-4 shadow border border-[#1ABC9C]">
@@ -250,7 +301,9 @@ export default function MainContent({
                 )}
 
                 <div className="mb-4 font-bold text-[#1ABC9C] text-2xl">
-                  {analysisResult.approach === 'existing_file_with_queries' ? 'Your Analysis Results:' : 'Goals & Charts:'}
+                  {analysisResult.approach === 'agent_query_with_instruction' || analysisResult.approach === 'existing_file_with_queries' 
+                    ? 'Your Analysis Results:' 
+                    : 'Goals & Charts:'}
                 </div>
                 
                 {analysisResult.goals?.map((g, i) => (
@@ -281,9 +334,8 @@ export default function MainContent({
           </div>
         )}
 
-        {/* Chat input and file upload at bottom */}
+        {/* Chat input - FIXED */}
         <form onSubmit={handleSubmit} className="w-full max-w-2xl mt-auto flex items-center gap-4 bg-[#181A20] rounded-xl shadow-lg px-6 py-4 border border-[#232323] sticky bottom-0 z-10" style={{boxShadow: '0 -2px 16px rgba(74, 197, 228, 0.08)'}}>
-          {/* File preview before upload */}
           {uploadFile && (
             <div className="flex items-center gap-2 bg-[#232323] text-[#1ABC9C] px-3 py-2 rounded-lg border border-[#1ABC9C]">
               <Paperclip className="h-4 w-4 mr-1" />
@@ -325,21 +377,19 @@ export default function MainContent({
           
           <button
             type="submit"
-            className="p-2 bg-gradient-to-br from-[#1ABC9C] to-[#16A085] hover:from-[#16A085] hover:to-[#1ABC9C] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center shadow-md"
+            className={`p-2 bg-gradient-to-br from-[#1ABC9C] to-[#16A085] hover:from-[#16A085] hover:to-[#1ABC9C] text-white rounded-lg transition-all duration-200 flex items-center justify-center shadow-md
+              ${!canSubmit ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
             disabled={!canSubmit}
-            title={
-              uploadFile && message.trim() 
-                ? "Upload file and analyze with query"
-                : uploadFile 
-                ? "Upload and analyze file" 
-                : hasUploadedFile && message.trim()
-                ? "Analyze with new query"
-                : "Upload a file or enter a query"
-            }
+            title={getButtonTitle()}
           >
             <ArrowUp className="h-5 w-5" />
           </button>
         </form>
+        
+        {/* Debug info - REMOVE IN PRODUCTION */}
+        <div className="mt-2 text-xs text-gray-500">
+          Debug: hasFile={hasUploadedFile.toString()} | newFile={hasNewFile.toString()} | query={hasQuery.toString()} | canSubmit={canSubmit.toString()}
+        </div>
       </div>
     </main>
   );
