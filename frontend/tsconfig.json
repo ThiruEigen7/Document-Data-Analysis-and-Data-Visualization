@@ -3,5 +3,13 @@
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
-  ]
+  ],
+  "compilerOptions": {
+    "lib": [
+      "es2023",
+      "DOM",
+      "DOM.Iterable",
+      "ESNext"
+    ]
+  }
 }

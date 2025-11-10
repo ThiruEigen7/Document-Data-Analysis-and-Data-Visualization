@@ -15,9 +15,11 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import tempfile
+from pathlib import Path
+import io
 
 load_dotenv()  
-gemini_api_key = "" 
+gemini_api_key = "AIzaSyDxQnW-zESLjjV0gQzkaMqXKci0u_E-_JA" 
 
 
 
@@ -290,6 +292,37 @@ async def agent_query(
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
+@app.post("/extract_columns/")
+async def extract_columns(file: UploadFile = File(...)):
+    try:
+        suffix = Path(file.filename).suffix.lower()
+        file_bytes = await file.read()
+
+        # Read CSV
+        if suffix == ".csv":
+            df = pd.read_csv(io.BytesIO(file_bytes), nrows=5, encoding='latin1')
+            columns = list(df.columns)
+
+        # Read Excel
+        elif suffix in [".xlsx", ".xls"]:
+            df = pd.read_excel(io.BytesIO(file_bytes), nrows=5)
+            columns = list(df.columns)
+
+        # Read JSON
+        elif suffix == ".json":
+            data = json.loads(file_bytes.decode())
+            if isinstance(data, list) and len(data) > 0:
+                columns = list(data[0].keys())
+            else:
+                columns = list(data.keys())
+
+        else:
+            return JSONResponse(status_code=400, content={"error": "Unsupported file format"})
+
+        return {"columns": columns, "filename": file.filename}
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 # --- Two-agent orchestration endpoint ---
 @app.post("/two_agent/")
@@ -385,6 +418,7 @@ async def two_agent_flow(
             "goals": goals,
             "charts": charts,
             "approach": approach,
+            "columns": columns 
         }
 
         print(f"Returning response with file_id: {response_data['file_id']}")
@@ -475,6 +509,7 @@ async def two_agent_query(
             "goals": goals,
             "charts": charts,
             "approach": approach,
+            "columns": columns 
         }
     
     except Exception as e:

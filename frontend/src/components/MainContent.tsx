@@ -1,9 +1,9 @@
-// File: src/components/MainContent.tsx  
-import React, { useState } from 'react';
-import { ArrowUp, Paperclip } from 'lucide-react';
+// File: src/components/MainContent.tsx
+import React, { useState, useRef, useEffect } from 'react';
+import { ArrowUp, Paperclip, X } from 'lucide-react'; 
 import UnifiedChartDisplay from './UnifiedChartDisplay';
 
-// Define types locally
+// Define types locally (ensure these match your App.tsx types)
 interface ChartInfo {
   goal: {
     index: number;
@@ -34,115 +34,62 @@ interface AnalysisResult {
   }>;
   charts: ChartInfo[];
   approach: string;
+  columns?: string[]; // Expect columns from analysis result
 }
 
 interface MainContentProps {
   analysisResult: AnalysisResult | null;
   onDownloadCSV: (data: any[], filename?: string) => void;
   showWelcome: boolean;
-  showUpload?: boolean;
   onUpload?: (files: File[], query?: string) => void;
-  hasUploadedFile?: boolean;
+  hasUploadedFile?: boolean; // Indicates if there's an *active* file
+  currentFileColumns: string[]; 
+  currentFileName: string | null; // Name of the *active* file
+  uploadedFileFromInput: File | null; // The temporary file selected in the input field
+  setUploadedFileFromInput: React.Dispatch<React.SetStateAction<File | null>>; // Setter for that temporary file
 }
 
 export default function MainContent({ 
   analysisResult, 
   onDownloadCSV, 
   showWelcome, 
-  showUpload = false, 
   onUpload,
-  hasUploadedFile = false
+  hasUploadedFile = false, // True if a file has been processed and is active
+  currentFileColumns, 
+  currentFileName, // The name of the currently active file (from App.tsx)
+  uploadedFileFromInput, // The *temporary* file selected in this input
+  setUploadedFileFromInput // Setter for the temporary file
 }: MainContentProps) {
   const [message, setMessage] = useState("");
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  // Removed internal `uploadFile` state; now using `uploadedFileFromInput` prop
   const [chatMessages, setChatMessages] = useState<Array<{ 
     type: 'user' | 'file' | 'response', 
     content: string, 
     fileName?: string,
     approach?: string,
-    tempId?: string
+    tempId?: string,
+    analysisResult?: AnalysisResult 
   }>>([]);
   
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const textAreaRef = useRef<HTMLTextAreaElement>(null); 
 
-  // Debug: Log when hasUploadedFile changes
-  React.useEffect(() => {
-    console.log('MainContent hasUploadedFile changed to:', hasUploadedFile);
-  }, [hasUploadedFile]);
-
-  // Submit both file and query together
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    const hasNewFile = !!uploadFile;
-    const hasQuery = message.trim().length > 0;
-    
-    // FIXED: Allow submission if either:
-    // 1. New file is attached (with or without query)
-    // 2. Already uploaded file exists AND user typed a query
-    const canSubmit = hasNewFile || (hasUploadedFile && hasQuery);
-
-    console.log('Submit Debug:', { hasNewFile, hasQuery, hasUploadedFile, canSubmit });
-
-    if (!canSubmit) {
-      console.log('Cannot submit - conditions not met');
-      return;
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-
-    if (onUpload) {
-      const tempId = Date.now().toString();
-      
-      let preliminaryApproach = '';
-      if (hasNewFile && hasQuery) {
-        preliminaryApproach = 'upload_with_queries';
-      } else if (hasNewFile) {
-        preliminaryApproach = 'upload_only';
-      } else if (hasUploadedFile && hasQuery) {
-        preliminaryApproach = 'existing_file_with_queries';
-      }
-
-      console.log('Submitting with approach:', preliminaryApproach);
-
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          type: 'user',
-          content: hasQuery ? message : '',
-          fileName: uploadFile ? uploadFile.name : undefined,
-          approach: preliminaryApproach,
-          tempId
-        }
-      ]);
-
-      onUpload(uploadFile ? [uploadFile] : [], hasQuery ? message : undefined);
-      
-      setUploadFile(null);
-      setMessage("");
-      
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+    if (textAreaRef.current) {
+      textAreaRef.current.style.height = 'auto';
+      textAreaRef.current.style.height = textAreaRef.current.scrollHeight + 'px';
     }
-  };
+  }, [chatMessages, message, currentFileColumns, uploadedFileFromInput]); // Added uploadedFileFromInput
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setUploadFile(e.target.files[0]);
-    }
-  };
+  const lastProcessedResultIdRef = useRef<string | null>(null);
 
-  const handleRemoveFile = () => {
-    setUploadFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const lastProcessedResultRef = React.useRef<string | null>(null);
-
-  React.useEffect(() => {
-    if (analysisResult && analysisResult.file_id !== lastProcessedResultRef.current) {
-      lastProcessedResultRef.current = analysisResult.file_id || null;
+  useEffect(() => {
+    if (analysisResult && analysisResult.file_id !== lastProcessedResultIdRef.current) {
+      lastProcessedResultIdRef.current = analysisResult.file_id || null;
 
       const approachMessages = {
         'agent_upload_no_instruction': 'File uploaded and analyzed successfully!',
@@ -153,41 +100,117 @@ export default function MainContent({
       setChatMessages((prev) => {
         const updated = [...prev];
         const lastUserMsgIndex = updated.findLastIndex(msg => msg.type === 'user');
-        
-        if (lastUserMsgIndex !== -1 && analysisResult.approach) {
+        if (lastUserMsgIndex !== -1 && updated[lastUserMsgIndex].tempId) { 
           updated[lastUserMsgIndex] = {
             ...updated[lastUserMsgIndex],
-            approach: analysisResult.approach
+            approach: analysisResult.approach 
           };
         }
         
-        return updated;
+        return [
+          ...updated,
+          { 
+            type: 'response', 
+            content: approachMessages[analysisResult.approach as keyof typeof approachMessages] || 'Analysis completed!',
+            approach: analysisResult.approach,
+            analysisResult: analysisResult 
+          }
+        ];
       });
-
-      setChatMessages((prev) => [
-        ...prev,
-        { 
-          type: 'response', 
-          content: approachMessages[analysisResult.approach as keyof typeof approachMessages] || 'Analysis completed!',
-          approach: analysisResult.approach 
-        }
-      ]);
     }
   }, [analysisResult]);
 
-  const chatEndRef = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    if (chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Determine if a new file is being submitted (from the input field)
+    const isNewFileInInput = !!uploadedFileFromInput; 
+    const hasQuery = message.trim().length > 0;
+    
+    // Condition to enable submit button:
+    // 1. A new file is in the input (with or without a query)
+    // 2. No new file in input, but an active file exists AND there's a query
+    const canSubmit = isNewFileInInput || (hasUploadedFile && hasQuery);
+
+    if (!canSubmit) {
+      console.log('Cannot submit - conditions not met');
+      return;
     }
-  }, [chatMessages]);
 
-  // FIXED: Proper submit button state
-  const hasNewFile = !!uploadFile;
+    if (onUpload) {
+      const tempId = Date.now().toString();
+      
+      let preliminaryApproach = '';
+      if (isNewFileInInput && hasQuery) {
+        preliminaryApproach = 'upload_with_queries';
+      } else if (isNewFileInInput) {
+        preliminaryApproach = 'upload_only';
+      } else if (hasUploadedFile && hasQuery) {
+        preliminaryApproach = 'existing_file_with_queries';
+      }
+
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          type: 'user',
+          content: hasQuery ? message : '',
+          fileName: isNewFileInInput ? uploadedFileFromInput!.name : (currentFileName || undefined), 
+          approach: preliminaryApproach,
+          tempId 
+        }
+      ]);
+
+      // Call onUpload with either the new file from input or an empty array if only querying existing
+      onUpload(isNewFileInInput ? [uploadedFileFromInput!] : [], hasQuery ? message : undefined);
+      
+      setUploadedFileFromInput(null); // Clear the temporary file in the input field via prop setter
+      setMessage("");
+      
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const newFile = e.target.files[0];
+      setUploadedFileFromInput(newFile);
+      // Immediately request columns from backend
+      const formData = new FormData();
+      formData.append('file', newFile);
+      fetch("http://127.0.0.1:8000/extract_columns/", {
+        method: "POST",
+        body: formData,
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.columns) {
+          // Use window/global setter if available, else fallback
+          if (typeof window.setCurrentFileColumns === 'function') {
+            window.setCurrentFileColumns(data.columns);
+          }
+          if (typeof window.setCurrentFileName === 'function') {
+            window.setCurrentFileName(newFile.name);
+          }
+          // If not, you may need to lift these setters to App.tsx and pass as props
+        }
+      });
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setUploadedFileFromInput(null); // Clear via prop setter
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const isNewFileInInput = !!uploadedFileFromInput;
   const hasQuery = message.trim().length > 0;
-  const canSubmit = hasNewFile || (hasUploadedFile && hasQuery);
+  const canSubmit = isNewFileInInput || (hasUploadedFile && hasQuery);
 
-  const placeholderText = hasUploadedFile && !uploadFile 
+  const placeholderText = hasUploadedFile && !isNewFileInInput 
     ? "Ask a new question about your uploaded data..."
     : "Upload a file and/or ask a question about your data";
 
@@ -211,11 +234,10 @@ export default function MainContent({
     );
   };
 
-  // FIXED: Better button title based on actual state
   const getButtonTitle = () => {
-    if (hasNewFile && hasQuery) {
+    if (isNewFileInInput && hasQuery) {
       return "Upload file and analyze with query";
-    } else if (hasNewFile) {
+    } else if (isNewFileInInput) {
       return "Upload and analyze file";
     } else if (hasUploadedFile && hasQuery) {
       return "Analyze with new query";
@@ -227,168 +249,186 @@ export default function MainContent({
   };
 
   return (
-    <main className="flex-1 flex flex-col items-center justify-center p-8 bg-[#121212] w-full min-h-screen">
-      <div className="w-full max-w-5xl flex flex-col justify-center items-center min-h-[80vh] bg-[#121212]">
-        <h1 className="text-5xl font-extrabold text-white mb-4 tracking-tight drop-shadow-lg">Ask Vizoraa</h1>
-        <p className="text-xl text-gray-400 mb-10">Data Analysis and Data Viz Agent</p>
-        
-        {/* Status indicator - ENHANCED */}
-        {hasUploadedFile && (
-          <div className="mb-4 flex items-center gap-3 px-4 py-2 bg-green-900/20 border border-green-500/30 rounded-lg">
-            <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-            <span className="text-sm text-green-300 font-medium">
-              File ready for analysis - you can ask new questions without uploading again!
-            </span>
+    <main className="flex-1 flex flex-col relative w-full overflow-hidden bg-[#121212]">
+      {showWelcome && (
+        <div className="flex flex-col items-center justify-center flex-1 text-center px-4 py-16">
+          <h1 className="text-5xl font-extrabold text-white mb-4 tracking-tight drop-shadow-lg">Ask Vizoraa</h1>
+          <p className="text-xl text-gray-400 mb-10">Data Analysis and Data Viz Agent</p>
+          <div className="text-gray-500 text-lg">
+            Start by uploading a dataset or asking a question about your data.
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Chat bubbles */}
-        <div className="w-full flex-1 flex flex-col gap-8 mb-10 overflow-y-auto px-2" style={{scrollBehavior: 'smooth', overscrollBehavior: 'contain'}}>
+      <div className={`flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-8 ${showWelcome ? 'hidden' : ''}`} style={{scrollBehavior: 'smooth', overscrollBehavior: 'contain'}}>
+        <div className="max-w-3xl mx-auto flex flex-col gap-8">
           {chatMessages.map((msg, idx) => (
             <div key={idx} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}> 
-              <div className={`px-6 py-5 rounded-2xl max-w-[80%] shadow-lg transition-all duration-200 flex flex-col gap-2
-                ${msg.type === 'user' ? 'bg-gradient-to-br from-[#1ABC9C] to-[#16A085] text-white font-semibold' 
-                  : msg.type === 'file' ? 'bg-[#232323] text-[#1ABC9C] font-semibold border border-[#1ABC9C]' 
-                  : 'bg-[#191C22] text-gray-100 font-medium'}
-                ${msg.type === 'user' ? 'hover:scale-105' : ''}
+              <div className={`px-4 py-3 rounded-xl max-w-[90%] md:max-w-[75%] shadow-md transition-all duration-200 
+                ${msg.type === 'user' ? 'bg-[#1ABC9C] text-white' 
+                  : 'bg-[#191C22] text-gray-100'}
               `}> 
-                {msg.approach && (
-                  <div className="mb-2">
-                    {getApproachBadge(msg.approach)}
+                {/* Display file name for user messages, but only if it's the *initial* upload context or a new file */}
+                {msg.type === 'user' && msg.fileName && (
+                  <div className="flex items-center gap-2 mb-1 text-sm bg-gray-700/50 rounded px-2 py-1 max-w-fit">
+                    <Paperclip className="h-4 w-4" />
+                    <span className="font-medium truncate">{msg.fileName}</span>
                   </div>
                 )}
-                {msg.fileName && (
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="inline-flex items-center px-2 py-1 bg-[#232323] text-[#1ABC9C] rounded-lg text-sm font-semibold border border-[#1ABC9C]">
-                      <Paperclip className="h-4 w-4 mr-1 inline" />
-                      {msg.fileName}
-                    </span>
+                {msg.content && <div className="text-base">{msg.content}</div>}
+
+                {msg.type === 'response' && msg.analysisResult && (
+                  <div className="mt-4 pt-4 border-t border-gray-700">
+                    <div className="mb-3 flex items-center gap-2">
+                      <span className="text-sm text-gray-400">Analysis Type:</span>
+                      {getApproachBadge(msg.analysisResult.approach)}
+                    </div>
+
+                    {(msg.analysisResult.approach === 'agent_upload_no_instruction' || msg.analysisResult.approach === 'upload_only') && (
+                      <>
+                        <div className="mb-2 font-bold text-[#1ABC9C] text-lg">Dataset Summary:</div>
+                        <div className="mb-4 text-white text-base bg-[#232323] rounded-lg p-3 shadow border border-[#1ABC9C]/50">
+                          {msg.analysisResult.summary_text}
+                        </div>
+                        <div className="mb-2 font-bold text-[#1ABC9C] text-lg">Personas:</div>
+                        <ul className="list-decimal ml-5 text-white space-y-2 text-base mb-4">
+                          {msg.analysisResult.personas.map((p, i) => (
+                            <li key={i}>
+                              <span className="font-semibold text-[#1ABC9C]">{p.persona}</span> 
+                              <span className="text-gray-400"> — {p.rationale}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+
+                    <div className="mb-2 font-bold text-[#1ABC9C] text-lg">
+                      {msg.analysisResult.approach === 'agent_query_with_instruction' || msg.analysisResult.approach === 'existing_file_with_queries' 
+                        ? 'Your Analysis Results:' 
+                        : 'Goals & Charts:'}
+                    </div>
+                    
+                    {msg.analysisResult.goals?.map((g, i) => (
+                      <div key={i} className="mt-4 p-4 bg-[#232323] rounded-lg shadow-lg">
+                        <div className="font-semibold text-white text-md mb-1">{g.question}</div>
+                        <div className="text-sm text-gray-400 mb-2">
+                          Suggested Chart: {g.suggested_chart || 'bar'}
+                        </div>
+                        <div className="flex justify-center items-center w-full">
+                          <div className="w-full">
+                            <UnifiedChartDisplay
+                              result={{
+                                success: true,
+                                summary: g.rationale,
+                                processed_data: msg.analysisResult?.charts[i]?.processed_df || [],
+                                chart_data: msg.analysisResult?.charts[i]?.chart_data_plotly || msg.analysisResult?.charts[i]?.chart_data_matplotlib || null,
+                                error: msg.analysisResult?.charts[i]?.preprocess_error || msg.analysisResult?.charts[i]?.chart_error_plotly || msg.analysisResult?.charts[i]?.chart_error_matplotlib || undefined,
+                                data_points: msg.analysisResult?.charts[i]?.processed_df?.length || 0,
+                              }}
+                              onDownload={() => onDownloadCSV(msg.analysisResult?.charts[i]?.processed_df ?? [], `chart_${i + 1}_data.csv`)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
-                {msg.content && <span>{msg.content}</span>}
               </div>
             </div>
           ))}
           <div ref={chatEndRef} />
         </div>
+      </div>
 
-        {/* Analysis results as chat bubble */}
-        {analysisResult && (
-          <div className="w-full flex flex-col gap-8 mb-10">
-            <div className="flex justify-start">
-              <div className="px-6 py-5 rounded-2xl max-w-full bg-[#191C22] text-gray-100 shadow-lg w-full">
-                <div className="mb-4 flex items-center gap-2">
-                  <span className="text-sm text-gray-400">Analysis Type:</span>
-                  {getApproachBadge(analysisResult.approach)}
-                </div>
-
-                {(analysisResult.approach === 'agent_upload_no_instruction' || analysisResult.approach === 'upload_only') && (
-                  <>
-                    <div className="mb-4 font-bold text-[#1ABC9C] text-2xl">Dataset Summary:</div>
-                    <div className="mb-6 text-white text-lg bg-[#232323] rounded-xl p-4 shadow border border-[#1ABC9C]">
-                      {analysisResult.summary_text}
-                    </div>
-                    <div className="mb-4 font-bold text-[#1ABC9C] text-2xl">Personas:</div>
-                    <ul className="list-decimal ml-6 text-white space-y-3 text-lg mb-6">
-                      {analysisResult.personas.map((p, i) => (
-                        <li key={i}>
-                          <span className="font-semibold text-[#1ABC9C]">{p.persona}</span> 
-                          <span className="text-gray-400"> — {p.rationale}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-
-                <div className="mb-4 font-bold text-[#1ABC9C] text-2xl">
-                  {analysisResult.approach === 'agent_query_with_instruction' || analysisResult.approach === 'existing_file_with_queries' 
-                    ? 'Your Analysis Results:' 
-                    : 'Goals & Charts:'}
-                </div>
-                
-                {analysisResult.goals?.map((g, i) => (
-                  <div key={i} className="mt-5 p-6 bg-[#232323] rounded-xl shadow-lg">
-                    <div className="font-semibold text-white text-xl mb-2">{g.question}</div>
-                    <div className="text-base text-gray-400 mb-3">
-                      Suggested Chart: {g.suggested_chart || 'bar'}
-                    </div>
-                    <div className="flex justify-center items-center w-full">
-                      <div className="w-full max-w-3xl mx-auto">
-                        <UnifiedChartDisplay
-                          result={{
-                            success: true,
-                            summary: g.rationale,
-                            processed_data: analysisResult.charts[i]?.processed_df || [],
-                            chart_data: analysisResult.charts[i]?.chart_data_plotly || analysisResult.charts[i]?.chart_data_matplotlib || null,
-                            error: analysisResult.charts[i]?.preprocess_error || analysisResult.charts[i]?.chart_error_plotly || analysisResult.charts[i]?.chart_error_matplotlib || undefined,
-                            data_points: analysisResult.charts[i]?.processed_df?.length || 0,
-                          }}
-                          onDownload={() => onDownloadCSV(analysisResult.charts[i]?.processed_df ?? [], `chart_${i + 1}_data.csv`)}
-                        />
-                      </div>
-                    </div>
-                  </div>
+      {/* Input box section */}
+      <div className="sticky bottom-0 left-0 w-full flex justify-center pb-8 pt-4 bg-gradient-to-t from-[#121212] via-[#121212]/90 to-transparent z-10">
+        <div className="w-full max-w-3xl px-4"> 
+          {/* Status/Column indicator - Only show if an active file and columns are present */}
+          {(hasUploadedFile && currentFileName && currentFileColumns.length > 0) && (
+            <div className="mb-4 bg-[#191C22] p-3 rounded-lg border border-gray-700 shadow-md">
+              <h3 className="text-sm font-semibold text-gray-300 mb-2 flex items-center">
+                <span className="mr-2 inline-block w-2 h-2 rounded-full bg-[#1ABC9C]"></span>
+                <span className="text-[#1ABC9C]">{currentFileName}</span> columns ({currentFileColumns.length}):
+              </h3>
+              <div className="flex flex-wrap gap-2 text-sm text-gray-400 max-h-24 overflow-y-auto">
+                {currentFileColumns.map((col, index) => (
+                  <span key={index} className="bg-gray-700/50 px-2 py-1 rounded-md whitespace-nowrap">
+                    {col}
+                  </span>
                 ))}
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Chat input - FIXED */}
-        <form onSubmit={handleSubmit} className="w-full max-w-2xl mt-auto flex items-center gap-4 bg-[#181A20] rounded-xl shadow-lg px-6 py-4 border border-[#232323] sticky bottom-0 z-10" style={{boxShadow: '0 -2px 16px rgba(74, 197, 228, 0.08)'}}>
-          {uploadFile && (
-            <div className="flex items-center gap-2 bg-[#232323] text-[#1ABC9C] px-3 py-2 rounded-lg border border-[#1ABC9C]">
-              <Paperclip className="h-4 w-4 mr-1" />
-              <span className="font-semibold text-sm">{uploadFile.name}</span>
-              <button 
-                type="button" 
-                className="ml-2 text-white hover:text-red-500" 
-                onClick={handleRemoveFile} 
-                title="Remove file"
-              >
-                ✕
-              </button>
+          )}
+          {/* Status indicator - show if an active file but no columns (e.g., initial upload, processing) */}
+          {(hasUploadedFile && currentFileName && currentFileColumns.length === 0) && (
+            <div className="mb-4 flex items-center gap-3 px-4 py-2 bg-green-900/20 border border-green-500/30 rounded-lg">
+              <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+              <span className="text-sm text-green-300 font-medium">
+                File <span className="text-white font-semibold">{currentFileName}</span> is active for analysis.
+              </span>
             </div>
           )}
+
+
+          <form onSubmit={handleSubmit} className="relative flex items-end gap-2 bg-[#181A20] rounded-xl shadow-lg border border-[#232323] overflow-hidden" style={{boxShadow: '0 2px 16px rgba(0, 0, 0, 0.2)'}}>
+            
+            {/* Displaying *new* file to be uploaded from input */}
+            {uploadedFileFromInput && (
+              <div className="absolute bottom-full left-0 mb-2 ml-2 flex items-center gap-1 bg-[#232323] text-[#1ABC9C] px-2 py-1 rounded-lg border border-[#1ABC9C] text-sm max-w-[calc(100%-40px)]">
+                <Paperclip className="h-4 w-4" />
+                <span className="font-semibold truncate">{uploadedFileFromInput.name}</span>
+                <button 
+                  type="button" 
+                  className="ml-1 text-white hover:text-red-500" 
+                  onClick={handleRemoveFile} 
+                  title="Remove file"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+            
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={handleFileChange}
+              accept=".csv,.json,.xlsx,.xls"
+            />
+            
+            <button
+              type="button"
+              className="p-3 text-gray-400 hover:text-white transition-colors flex-shrink-0"
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach file"
+            >
+              <Paperclip className="h-5 w-5" />
+            </button>
+            
+            <textarea
+              ref={textAreaRef}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder={placeholderText}
+              className="flex-1 w-full p-3 resize-none overflow-y-hidden min-h-[50px] max-h-[200px] text-base bg-transparent border-none focus:ring-0 focus:outline-none text-white placeholder-gray-500"
+              rows={1}
+            />
+            
+            <button
+              type="submit"
+              className={`p-3 bg-[#1ABC9C] text-white rounded-lg m-2 flex items-center justify-center transition-all duration-200 flex-shrink-0
+                ${!canSubmit ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 hover:bg-[#16A085]'}`}
+              disabled={!canSubmit}
+              title={getButtonTitle()}
+            >
+              <ArrowUp className="h-5 w-5" />
+            </button>
+          </form>
           
-          <button
-            type="button"
-            className="p-2 bg-[#232323] rounded-full text-[#1ABC9C] hover:bg-[#1ABC9C]/20 transition-colors"
-            onClick={() => fileInputRef.current?.click()}
-            title="Upload file"
-          >
-            <Paperclip className="h-6 w-6" />
-          </button>
-          
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            onChange={handleFileChange}
-            accept=".csv,.json,.xlsx,.xls"
-          />
-          
-          <input
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder={placeholderText}
-            className="flex-1 px-5 py-4 text-lg bg-[#232323] border border-gray-700 rounded-lg focus:border-[#1ABC9C] focus:ring-1 focus:ring-[#1ABC9C] focus:outline-none text-white placeholder-gray-400 shadow-sm"
-          />
-          
-          <button
-            type="submit"
-            className={`p-2 bg-gradient-to-br from-[#1ABC9C] to-[#16A085] hover:from-[#16A085] hover:to-[#1ABC9C] text-white rounded-lg transition-all duration-200 flex items-center justify-center shadow-md
-              ${!canSubmit ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
-            disabled={!canSubmit}
-            title={getButtonTitle()}
-          >
-            <ArrowUp className="h-5 w-5" />
-          </button>
-        </form>
-        
-        {/* Debug info - REMOVE IN PRODUCTION */}
-        <div className="mt-2 text-xs text-gray-500">
-          Debug: hasFile={hasUploadedFile.toString()} | newFile={hasNewFile.toString()} | query={hasQuery.toString()} | canSubmit={canSubmit.toString()}
+          {/* Debug info - REMOVE IN PRODUCTION */}
+          <div className="mt-2 text-xs text-gray-600 text-center">
+            Debug: hasFile={hasUploadedFile.toString()} | isNewFileInInput={isNewFileInInput.toString()} | query={hasQuery.toString()} | canSubmit={canSubmit.toString()}
+          </div>
         </div>
       </div>
     </main>

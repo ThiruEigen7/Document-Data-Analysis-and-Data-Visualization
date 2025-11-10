@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+// App.tsx
+import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import MainContent from './components/MainContent';
-import Workspace from './components/Workspace';
 import StyleGuide from './components/StyleGuide';
 import { ChartData } from './types';
 
-// Document interface
+// Document interface (ensure consistency)
 interface Document {
   id: string;
   name: string;
@@ -16,18 +16,10 @@ interface Document {
   content?: string;
   summary?: string;
   keyPoints?: string[];
+  columns?: string[];
 }
 
-// Dataset interface for backward compatibility
-interface Dataset {
-  id: string;
-  name: string;
-  size: string;
-  type: string;
-  uploadedAt: Date;
-}
-
-// Analysis result interfaces
+// Analysis result interfaces (ensure consistency)
 interface ChartInfo {
   goal: {
     index: number;
@@ -58,10 +50,11 @@ interface AnalysisResult {
   }>;
   charts: ChartInfo[];
   approach: string;
+  columns?: string[];
 }
 
 function App() {
-  const [activeSection, setActiveSection] = useState('overview');
+  const [activeSection, setActiveSection] = useState('chat'); 
   const [showStyleGuide, setShowStyleGuide] = useState(false);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState<string[]>([]);
@@ -71,61 +64,106 @@ function App() {
   const [isDarkTheme, setIsDarkTheme] = useState(true);
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [currentFileId, setCurrentFileId] = useState<string | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null); // This is the file currently selected in the INPUT FIELD
+  const [currentActiveFileId, setCurrentActiveFileId] = useState<string | null>(null); // This is the ID of the file the CHAT is currently operating on (either new upload or sidebar selection)
+  const [currentFileColumns, setCurrentFileColumns] = useState<string[]>([]); 
+  const [currentFileName, setCurrentFileName] = useState<string | null>(null); // New state to hold the name of the currently active file
 
-  // Updated document processing function
+  // Effect to update currentFileName and columns based on selectedDocument or latest upload
+  useEffect(() => {
+    if (selectedDocument) {
+      setCurrentFileName(selectedDocument.name);
+      setCurrentFileColumns(selectedDocument.columns || []);
+      setCurrentActiveFileId(selectedDocument.id);
+      setUploadedFile(null); // Clear the temporary uploadedFile from the input field
+    } else if (uploadedFile) { // If a file is in the input field but not yet fully processed/selected
+      setCurrentFileName(uploadedFile.name);
+      setCurrentFileColumns([]); // No columns until processed
+      setCurrentActiveFileId(null);
+    } else {
+      setCurrentFileName(null);
+      setCurrentFileColumns([]);
+      setCurrentActiveFileId(null);
+    }
+  }, [selectedDocument, uploadedFile]);
+
+
   const handleUpload = async (files: File[] = [], query?: string) => {
-    console.log('handleUpload called:', { files, query, currentFileId, uploadedFile });
+    console.log('handleUpload called:', { files, query, currentActiveFileId, uploadedFile });
     
-    // Determine which approach to use
-    const hasNewFile = files.length > 0;
-    const hasExistingFile = currentFileId && !hasNewFile;
+    // Determine the actual file and its ID for the backend call
+    const fileToProcess = files.length > 0 ? files[0] : uploadedFile;
+    const fileIdForBackend = files.length > 0 ? null : currentActiveFileId;
+    const isNewFileUpload = files.length > 0;
+    const isQueryOnExistingFile = currentActiveFileId && !isNewFileUpload;
     const hasQuery = query && query.trim();
 
-    console.log('Upload conditions:', { hasNewFile, hasExistingFile, hasQuery });
-
     // Validation
-    if (!hasNewFile && !hasExistingFile) {
+    if (!fileToProcess && !isQueryOnExistingFile) {
       setNotificationMsg('Please upload a file first.');
       setShowNotification(true);
       setTimeout(() => setShowNotification(false), 3000);
       return;
     }
-
-    if (hasExistingFile && !hasQuery) {
+    if (isQueryOnExistingFile && !hasQuery) {
       setNotificationMsg('Please enter a query for analysis.');
       setShowNotification(true);
       setTimeout(() => setShowNotification(false), 3000);
       return;
     }
 
-    const file = hasNewFile ? files[0] : uploadedFile;
-    if (!file && hasNewFile) return;
-
     setIsAnalysisLoading(true);
+
+    // --- NEW: If user is uploading a new file, extract columns client-side and show immediately ---
+    if (isNewFileUpload && fileToProcess) {
+      // Only parse CSV/Excel/JSON for columns
+      const fileName = fileToProcess.name.toLowerCase();
+      if (fileName.endsWith('.csv')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const text = event.target?.result as string;
+          const firstLine = text.split('\n')[0];
+          const columns = firstLine.split(',').map(col => col.trim());
+          setCurrentFileColumns(columns);
+          setCurrentFileName(fileToProcess.name);
+        };
+        reader.readAsText(fileToProcess);
+      } else if (fileName.endsWith('.json')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const json = JSON.parse(event.target?.result as string);
+            const columns = Array.isArray(json) && json.length > 0
+              ? Object.keys(json[0])
+              : Object.keys(json);
+            setCurrentFileColumns(columns);
+            setCurrentFileName(fileToProcess.name);
+          } catch {
+            setCurrentFileColumns([]);
+          }
+        };
+        reader.readAsText(fileToProcess);
+      } // Excel support can be added with a library like SheetJS
+    }
 
     try {
       let result: AnalysisResult;
       let endpoint: string;
       const formData = new FormData();
 
-      if (hasNewFile) {
-        // Approach 1: Upload new file (with or without queries)
+      if (isNewFileUpload) {
         endpoint = 'http://127.0.0.1:8000/two_agent/';
-        formData.append('file', file!);
+        formData.append('file', fileToProcess!);
         if (hasQuery) {
           formData.append('instruction', query!);
         }
-        setUploadedFile(file!);
-        setUploadingFiles((prev) => [...prev, file!.name]);
-      } else if (hasExistingFile && hasQuery) {
-        // Approach 2: Analyze existing file with new queries
+        setUploadingFiles((prev) => [...prev, fileToProcess!.name]);
+      } else if (isQueryOnExistingFile) {
         endpoint = 'http://127.0.0.1:8000/two_agent_query/';
-        formData.append('file_id', currentFileId!);
+        formData.append('file_id', fileIdForBackend!);
         formData.append('instruction', query!);
       } else {
-        throw new Error('Invalid request configuration');
+        throw new Error('Invalid request configuration'); // Should not happen with above checks
       }
 
       const response = await fetch(endpoint, {
@@ -141,43 +179,56 @@ function App() {
       result = await response.json();
       setAnalysisResult(result);
 
-      // Store file ID for future queries
+      // Update the active file ID and columns
       if (result.file_id) {
-        setCurrentFileId(result.file_id);
+        setCurrentActiveFileId(result.file_id);
       }
-
-      // Only create new document entry for new file uploads
-      if (hasNewFile) {
-        const documentInfo: Document = {
-          id: result.file_id || Math.random().toString(36).substr(2, 9),
-          name: file!.name,
-          type: file!.type || 'application/csv',
-          size: (file!.size / 1024).toFixed(1) + ' KB',
-          uploadedAt: new Date(),
-          summary: result.summary_text?.substring(0, 150) + '...',
-          keyPoints: result.goals?.map((g: any) => g.question).slice(0, 3) || []
-        };
-
-        setDocuments((prev) => [...prev, documentInfo]);
+      if (result.columns) {
+        setCurrentFileColumns(result.columns);
       }
+      
+      // Update or add the document to the documents list
+      const processedDocInfo: Document = {
+        id: result.file_id || Math.random().toString(36).substr(2, 9),
+        name: fileToProcess?.name || "Unknown File", // Use processed file name
+        type: fileToProcess?.type || 'application/csv',
+        size: (fileToProcess?.size / 1024).toFixed(1) + ' KB',
+        uploadedAt: new Date(),
+        summary: result.summary_text?.substring(0, 150) + '...',
+        keyPoints: result.goals?.map((g: any) => g.question).slice(0, 3) || [],
+        columns: result.columns || []
+      };
 
-      // Success message based on approach
-      const successMsg = hasNewFile 
+      setDocuments((prev) => {
+        const existingDocIndex = prev.findIndex(doc => doc.id === processedDocInfo.id);
+        if (existingDocIndex > -1) {
+          const updatedDocs = [...prev];
+          updatedDocs[existingDocIndex] = processedDocInfo;
+          return updatedDocs;
+        }
+        return [...prev, processedDocInfo];
+      });
+      setSelectedDocument(processedDocInfo); // Set this document as selected
+
+      // Clear the temporary file in the input field after successful processing
+      setUploadedFile(null); 
+
+      const successMsg = isNewFileUpload 
         ? (hasQuery ? 'File uploaded and analyzed with your queries!' : 'Dataset analyzed successfully!')
         : 'Analysis completed for your queries!';
       
       setNotificationMsg(successMsg);
       setShowNotification(true);
       setTimeout(() => setShowNotification(false), 3000);
-      setActiveSection('analyze');
+      setActiveSection('chat'); 
 
     } catch (error: any) {
       setNotificationMsg(error.message || 'Processing failed. Please try again.');
       setShowNotification(true);
       setTimeout(() => setShowNotification(false), 3000);
     } finally {
-      if (hasNewFile && file) {
-        setUploadingFiles((prev) => prev.filter((name) => name !== file.name));
+      if (fileToProcess) {
+        setUploadingFiles((prev) => prev.filter((name) => name !== fileToProcess.name));
       }
       setIsAnalysisLoading(false);
     }
@@ -188,21 +239,23 @@ function App() {
     if (selectedDocument?.id === id) {
       setSelectedDocument(null);
     }
-    // If removing current file, reset file tracking
-    if (currentFileId === id) {
-      setCurrentFileId(null);
-      setUploadedFile(null);
+    if (currentActiveFileId === id) {
+      setCurrentActiveFileId(null);
       setAnalysisResult(null);
+      setCurrentFileColumns([]); 
+      setCurrentFileName(null);
     }
   };
 
   const handlePreviewDocument = (document: Document) => {
     setSelectedDocument(document);
-    setCurrentFileId(document.id);
-    console.log('Preview document:', document);
+    setCurrentActiveFileId(document.id); // Set the active file ID
+    setCurrentFileName(document.name); // Set the active file name
+    setCurrentFileColumns(document.columns || []); 
+    setUploadedFile(null); // Clear any pending file in the input field
+    setActiveSection('chat'); 
   };
 
-  // CSV download handler
   const handleDownloadCSV = (data: any[], filename: string = 'processed_data.csv') => {
     if (!data || !data.length) return;
     
@@ -219,35 +272,12 @@ function App() {
   };
 
   const handleUploadClick = () => {
-    setActiveSection('overview');
+    setActiveSection('chat'); 
   };
 
   const handleThemeToggle = () => {
     setIsDarkTheme(!isDarkTheme);
   };
-
-  // Helper: Map ChartInfo[] to ChartData[] for Workspace
-  const mapChartsToChartData = (charts: ChartInfo[]): ChartData[] =>
-    charts.map((c, idx) => ({
-      id: String(idx),
-      title: c.goal?.question || `Chart ${idx + 1}`,
-      type: c.goal?.suggested_chart || c.chart_spec?.type || 'bar',
-      data: Array.isArray(c.processed_df)
-        ? c.processed_df.map((row: any) => ({
-            name: row.name ?? row.label ?? row.x ?? '',
-            value: row.value ?? row.y ?? row.count ?? 0,
-          }))
-        : [],
-    }));
-
-  // Convert documents to datasets format for backward compatibility
-  const documentsAsDatasets: Dataset[] = documents.map(doc => ({
-    id: doc.id,
-    name: doc.name,
-    size: doc.size,
-    type: doc.type,
-    uploadedAt: doc.uploadedAt
-  }));
 
   if (showStyleGuide) {
     return (
@@ -263,52 +293,38 @@ function App() {
     );
   }
 
-  const showWelcome = !analysisResult && activeSection !== 'overview' && activeSection !== 'upload';
-  const showMainContent = activeSection === 'analyze' || activeSection === 'visualize' || showWelcome;
+  const showWelcomeInMainContent = !analysisResult && !currentActiveFileId && !uploadedFile;
 
   return (
-    <div className="min-h-screen bg-[#121212]">
+    <div className="min-h-screen flex flex-col bg-[#121212]">
       <Header 
         onUploadClick={handleUploadClick}
         onThemeToggle={handleThemeToggle}
         isDark={isDarkTheme}
       />
-      <div className="flex">
+      <div className="flex flex-1 overflow-hidden">
         <Sidebar 
           activeSection={activeSection}
           onSectionChange={setActiveSection}
           documents={documents}
+          onRemoveDocument={handleRemoveDocument}
+          onPreviewDocument={handlePreviewDocument}
+          selectedDocumentId={selectedDocument?.id}
         />
-        {/* Main Content Area */}
-        {(showMainContent || activeSection === 'upload') ? (
-          <MainContent 
-            analysisResult={analysisResult}
-            onDownloadCSV={handleDownloadCSV}
-            showWelcome={showWelcome}
-            showUpload={activeSection === 'upload'}
-            onUpload={handleUpload}
-            hasUploadedFile={!!currentFileId}
-          />
-        ) : (
-          <div className="flex-1 flex">
-            <div className="flex-1 overflow-auto bg-[#121212] p-6">
-              <Workspace
-                activeSection={activeSection}
-                datasets={documentsAsDatasets}
-                uploadingFiles={uploadingFiles}
-                onUpload={handleUpload}
-                onRemoveDataset={handleRemoveDocument}
-                onPreviewDataset={(dataset) => {
-                  const doc = documents.find(d => d.id === dataset.id);
-                  if (doc) handlePreviewDocument(doc);
-                }}
-                charts={mapChartsToChartData(analysisResult?.charts ?? [])}
-                sampleData={[]}
-              />
-            </div>
-            <div className="w-full lg:w-96 h-96 lg:h-full flex-shrink-0"></div>
-          </div>
-        )}
+        <MainContent 
+          analysisResult={analysisResult}
+          onDownloadCSV={handleDownloadCSV}
+          showWelcome={showWelcomeInMainContent}
+          onUpload={handleUpload}
+          hasUploadedFile={!!currentActiveFileId || !!uploadedFile}  // Use currentActiveFileId to indicate if a file is active
+          currentFileColumns={currentFileColumns}
+          currentFileName={currentFileName} // Pass the determined current file name
+          uploadedFileFromInput={uploadedFile} // Pass the temporary uploaded file from input
+          setUploadedFileFromInput={setUploadedFile}
+          setCurrentFileColumns={setCurrentFileColumns}   // ✅ ADD THIS
+          setCurrentFileName={setCurrentFileName}
+          onPreviewDocument={handlePreviewDocument}  // Pass setter for MainContent to manage its internal file state
+        />
       </div>
       {/* Loading Overlay */}
       {isAnalysisLoading && (
