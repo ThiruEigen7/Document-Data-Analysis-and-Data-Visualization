@@ -47,6 +47,8 @@ interface MainContentProps {
   currentFileName: string | null; // Name of the *active* file
   uploadedFileFromInput: File | null; // The temporary file selected in the input field
   setUploadedFileFromInput: React.Dispatch<React.SetStateAction<File | null>>; // Setter for that temporary file
+  setCurrentFileColumns: (columns: string[]) => void; // <-- Add this
+  setCurrentFileName: (name: string) => void; // <-- Add this
 }
 
 export default function MainContent({ 
@@ -58,7 +60,9 @@ export default function MainContent({
   currentFileColumns, 
   currentFileName, // The name of the currently active file (from App.tsx)
   uploadedFileFromInput, // The *temporary* file selected in this input
-  setUploadedFileFromInput // Setter for the temporary file
+  setUploadedFileFromInput, // Setter for the temporary file
+  setCurrentFileColumns, // <-- Add this
+  setCurrentFileName // <-- Add this
 }: MainContentProps) {
   const [message, setMessage] = useState("");
   // Removed internal `uploadFile` state; now using `uploadedFileFromInput` prop
@@ -186,14 +190,8 @@ export default function MainContent({
       .then(res => res.json())
       .then(data => {
         if (data.columns) {
-          // Use window/global setter if available, else fallback
-          if (typeof window.setCurrentFileColumns === 'function') {
-            window.setCurrentFileColumns(data.columns);
-          }
-          if (typeof window.setCurrentFileName === 'function') {
-            window.setCurrentFileName(newFile.name);
-          }
-          // If not, you may need to lift these setters to App.tsx and pass as props
+          setCurrentFileColumns(data.columns); // Use prop directly
+          setCurrentFileName(newFile.name);    // Use prop directly
         }
       });
     }

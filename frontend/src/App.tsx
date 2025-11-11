@@ -323,7 +323,7 @@ function App() {
           setUploadedFileFromInput={setUploadedFile}
           setCurrentFileColumns={setCurrentFileColumns}   // ✅ ADD THIS
           setCurrentFileName={setCurrentFileName}
-          onPreviewDocument={handlePreviewDocument}  // Pass setter for MainContent to manage its internal file state
+            // Pass setter for MainContent to manage its internal file state
         />
       </div>
       {/* Loading Overlay */}
